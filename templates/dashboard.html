@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>POLY-DERIBIT // Institutional Arbitrage Terminal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #06090e;
+      --bg-surface: #0c1017;
+      --bg-card: #111722;
+      --bg-highlight: #17202f;
+      --border: #1e293b;
+      --border-accent: #2e3d56;
+      --text-main: #e2e8f0;
+      --text-muted: #8492a6;
+      --text-dim: #4b5563;
+      --bb-orange: #ff9900;
+      --bb-amber: #f59e0b;
+      --bb-green: #00f076;
+      --bb-red: #ff334b;
+      --bb-cyan: #00e5ff;
+      --bb-purple: #a855f7;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      overflow-x: hidden;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-base);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-accent);
+      border-radius: 3px;
+    }
+
+    /* Top Bloomberg Header Strip */
+    .top-strip {
+      background: #000000;
+      border-bottom: 2px solid var(--bb-orange);
+      padding: 6px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .top-strip-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .logo-badge {
+      background: var(--bb-orange);
+      color: #000;
+      padding: 2px 6px;
+      font-weight: 800;
+      border-radius: 2px;
+    }
+    .terminal-title {
+      color: #fff;
+      font-size: 12px;
+    }
+    .top-strip-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      color: var(--text-muted);
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 8px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--bb-green);
+      box-shadow: 0 0 8px var(--bb-green);
+      animation: pulse 2s infinite;
+    }
+    .dot.connecting {
+      background: var(--bb-amber);
+      box-shadow: 0 0 8px var(--bb-amber);
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* Main Container */
+    .terminal-container {
+      padding: 14px 16px;
+      max-width: 1720px;
+      margin: 0 auto;
+    }
+
+    /* Metric Cards Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .metric-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--bb-orange);
+      padding: 10px 14px;
+      border-radius: 2px;
+      position: relative;
+    }
+    .metric-card.green-card {
+      border-left-color: var(--bb-green);
+    }
+    .metric-card.amber-card {
+      border-left-color: var(--bb-amber);
+    }
+    .metric-card.cyan-card {
+      border-left-color: var(--bb-cyan);
+    }
+    .metric-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.8px;
+      margin-bottom: 4px;
+    }
+    .metric-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .metric-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    /* Price Flash Animation */
+    .flash-green {
+      animation: flash-g 0.8s ease-out;
+    }
+    .flash-red {
+      animation: flash-r 0.8s ease-out;
+    }
+    @keyframes flash-g {
+      0% { color: var(--bb-green); text-shadow: 0 0 12px var(--bb-green); }
+      100% { color: inherit; }
+    }
+    @keyframes flash-r {
+      0% { color: var(--bb-red); text-shadow: 0 0 12px var(--bb-red); }
+      100% { color: inherit; }
+    }
+
+    /* Control Bar & Filter Deck */
+    .controls-deck {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+      margin-bottom: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      border-radius: 2px;
+    }
+    .controls-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-toggle {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 6px 12px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-toggle:hover {
+      border-color: var(--bb-orange);
+      color: #fff;
+    }
+    .btn-toggle.active {
+      background: var(--bb-orange);
+      color: #000;
+      border-color: var(--bb-orange);
+      font-weight: 700;
+    }
+    .btn-toggle.active.green-active {
+      background: var(--bb-green);
+      color: #000;
+      border-color: var(--bb-green);
+    }
+    .btn-toggle.active.amber-active {
+      background: var(--bb-amber);
+      color: #000;
+      border-color: var(--bb-amber);
+    }
+
+    .search-input {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 6px 12px;
+      font-family: inherit;
+      font-size: 11px;
+      border-radius: 2px;
+      outline: none;
+      min-width: 180px;
+    }
+    .search-input:focus {
+      border-color: var(--bb-orange);
+    }
+
+    /* Data Table Panel */
+    .table-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .table-header-bar {
+      padding: 8px 14px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .table-container {
+      overflow-x: auto;
+      max-height: calc(100vh - 280px);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-variant-numeric: tabular-nums;
+      text-align: left;
+    }
+    th {
+      background: #090d13;
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      padding: 8px 12px;
+      border-bottom: 2px solid var(--border-accent);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      white-space: nowrap;
+    }
+    td {
+      padding: 7px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      white-space: nowrap;
+      font-size: 11px;
+    }
+    tr:hover td {
+      background: rgba(255, 153, 0, 0.05);
+    }
+
+    /* Highlighted Rows */
+    tr.row-pure-arb td {
+      background: rgba(0, 240, 118, 0.07);
+    }
+    tr.row-stat-edge td {
+      background: rgba(245, 158, 11, 0.06);
+    }
+    tr.row-pin-risk td {
+      background: rgba(255, 51, 75, 0.04);
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 7px;
+      border-radius: 2px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+    .badge-pure-arb {
+      background: rgba(0, 240, 118, 0.18);
+      color: var(--bb-green);
+      border: 1px solid var(--bb-green);
+      box-shadow: 0 0 10px rgba(0, 240, 118, 0.2);
+    }
+    .badge-stat-edge {
+      background: rgba(245, 158, 11, 0.18);
+      color: var(--bb-amber);
+      border: 1px solid var(--bb-amber);
+    }
+    .badge-pin-risk {
+      background: rgba(255, 51, 75, 0.15);
+      color: var(--bb-red);
+      border: 1px solid rgba(255, 51, 75, 0.4);
+    }
+    .badge-no-arb {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-dim);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .tag-strat {
+      padding: 1px 5px;
+      border-radius: 2px;
+      font-size: 9px;
+      font-weight: 600;
+    }
+    .tag-bull {
+      background: rgba(0, 229, 255, 0.12);
+      color: var(--bb-cyan);
+      border: 1px solid rgba(0, 229, 255, 0.3);
+    }
+    .tag-bear {
+      background: rgba(168, 85, 247, 0.12);
+      color: var(--bb-purple);
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+
+    /* Profit & Cost colors */
+    .cost-val {
+      font-weight: 600;
+    }
+    .profit-pos {
+      color: var(--bb-green);
+      font-weight: 700;
+    }
+    .profit-neg {
+      color: var(--text-muted);
+    }
+    .apy-badge {
+      font-weight: 800;
+      color: var(--bb-green);
+    }
+
+    /* Footer strip */
+    .table-footer {
+      padding: 8px 14px;
+      background: #090d13;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-muted);
+      font-size: 10px;
+    }
+
+    /* Empty state */
+    .empty-state {
+      padding: 60px 20px;
+      text-align: center;
+      color: var(--text-muted);
+    }
+    .empty-state h3 {
+      color: #fff;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Strip -->
+  <header class="top-strip">
+    <div class="top-strip-left">
+      <span class="logo-badge">BBG // ARB</span>
+      <span class="terminal-title">POLYMARKET-DERIBIT SYNTHETIC SPREAD MATRIX v2.0</span>
+      <span class="status-pill"><span class="dot" id="wsDot"></span> <span id="wsStatusText">LIVE WS</span></span>
+    </div>
+    <div class="top-strip-right">
+      <span>DERIBIT WS: <strong style="color:var(--bb-green);" id="deribitStatus">CONNECTED</strong></span>
+      <span>POLY CLOB WS: <strong style="color:var(--bb-cyan);" id="polyStatus">CONNECTED</strong></span>
+      <span>SYSTEM TIME: <strong id="clockUtc">--:--:-- UTC</strong></span>
+    </div>
+  </header>
+
+  <!-- Container -->
+  <main class="terminal-container">
+
+    <!-- Metrics Ribbon -->
+    <section class="metrics-grid">
+      <div class="metric-card cyan-card">
+        <div class="metric-label">BTC SPOT PRICE (DERIBIT)</div>
+        <div class="metric-value" id="cardBtcPrice">$0.00</div>
+        <div class="metric-sub">PERPETUAL INDEX REFERENCE</div>
+      </div>
+      <div class="metric-card green-card">
+        <div class="metric-label">BEST PURE ARB (TAKER)</div>
+        <div class="metric-value" id="cardBestPureArb">--</div>
+        <div class="metric-sub" id="cardBestPureSub">Zero Pin Risk Guaranteed Yield</div>
+      </div>
+      <div class="metric-card amber-card">
+        <div class="metric-label">BEST MAKER YIELD (MID-MARKET)</div>
+        <div class="metric-value" id="cardBestMaker">--</div>
+        <div class="metric-sub" id="cardBestMakerSub">Passive Quoting Margin</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">ACTIVE EXECUTABLE WINDOWS</div>
+        <div class="metric-value" id="cardActiveWindows">0</div>
+        <div class="metric-sub" id="cardActiveSub">Filtered Active Out of -- Monitored</div>
+      </div>
+    </section>
+
+    <!-- Controls Deck -->
+    <section class="controls-deck">
+      <div class="controls-group">
+        <span style="font-weight:700; color:var(--bb-orange); margin-right:4px;">[PRICING MODE]</span>
+        <button class="btn-toggle active" id="modeTaker" onclick="setMode('taker')">TAKER (INSTANT FILL)</button>
+        <button class="btn-toggle" id="modeMaker" onclick="setMode('maker')">MAKER (MID-MARKET)</button>
+        <button class="btn-toggle" id="modeDual" onclick="setMode('dual')">DUAL COMPARISON</button>
+      </div>
+
+      <div class="controls-group">
+        <span style="font-weight:700; color:var(--text-muted); margin-right:4px;">FILTER:</span>
+        <button class="btn-toggle active" id="filterAll" onclick="setFilter('all')">ALL</button>
+        <button class="btn-toggle" id="filterPure" onclick="setFilter('pure')">🟢 PURE ARB ONLY</button>
+        <button class="btn-toggle" id="filterStat" onclick="setFilter('stat')">🟡 STAT EDGE ONLY</button>
+        <button class="btn-toggle" id="filterBull" onclick="setFilter('bull')">BULL ONLY</button>
+        <button class="btn-toggle" id="filterBear" onclick="setFilter('bear')">BEAR ONLY</button>
+        <input type="text" id="searchInput" class="search-input" placeholder="Search strike or date..." oninput="renderTable()">
+      </div>
+    </section>
+
+    <!-- Table Panel -->
+    <section class="table-panel">
+      <div class="table-header-bar">
+        <span>LIVE ARBITRAGE MATRIX ($2,000 WIDE SYNTHETIC SPATIAL SPREADS)</span>
+        <span style="color:var(--text-muted);" id="dataStatsLabel">Displaying active quotes</span>
+      </div>
+
+      <div class="table-container">
+        <table id="matrixTable">
+          <thead>
+            <tr id="tableHeaderRow">
+              <!-- Dynamically populated based on mode -->
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+        <div id="emptyNotice" class="empty-state" style="display:none;">
+          <h3>AWAITING REAL-TIME QUOTES</h3>
+          <p>Listening to Deribit & Polymarket WebSocket feeds. Contracts without simultaneous two-sided quotes are hidden automatically.</p>
+        </div>
+      </div>
+
+      <div class="table-footer">
+        <span id="footerHiddenCount">Hidden unquoted contracts: -- (listening in background)</span>
+        <span>Math: Widen $2,000 Spreads | Black-Scholes Pin Risk P(Pin) | Deribit 12.5% Fee Cap</span>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    let currentMode = 'taker'; // 'taker', 'maker', 'dual'
+    let currentFilter = 'all';  // 'all', 'pure', 'stat', 'bull', 'bear'
+    let lastBtc = 0;
+    let allTrades = [];
+    let hiddenCount = 0;
+
+    // Clock
+    setInterval(() => {
+      const d = new Date();
+      document.getElementById('clockUtc').innerText = d.toISOString().replace('T', ' ').slice(11, 19) + ' UTC';
+    }, 1000);
+
+    function setMode(mode) {
+      currentMode = mode;
+      document.getElementById('modeTaker').className = 'btn-toggle ' + (mode === 'taker' ? 'active' : '');
+      document.getElementById('modeMaker').className = 'btn-toggle ' + (mode === 'maker' ? 'active' : '');
+      document.getElementById('modeDual').className = 'btn-toggle ' + (mode === 'dual' ? 'active' : '');
+      buildTableHeader();
+      renderTable();
+    }
+
+    function setFilter(filt) {
+      currentFilter = filt;
+      ['filterAll', 'filterPure', 'filterStat', 'filterBull', 'filterBear'].forEach(id => {
+        document.getElementById(id).classList.remove('active', 'green-active', 'amber-active');
+      });
+      const activeEl = document.getElementById('filter' + filt.charAt(0).toUpperCase() + filt.slice(1));
+      if (activeEl) {
+        if (filt === 'pure') activeEl.classList.add('active', 'green-active');
+        else if (filt === 'stat') activeEl.classList.add('active', 'amber-active');
+        else activeEl.classList.add('active');
+      }
+      renderTable();
+    }
+
+    function buildTableHeader() {
+      const tr = document.getElementById('tableHeaderRow');
+      if (currentMode === 'dual') {
+        tr.innerHTML = `
+          <th>MARKET / EXPIRY</th>
+          <th>STRIKE BOUNDS</th>
+          <th>STRATEGY</th>
+          <th>POLY TAKER / MAKER</th>
+          <th>DERIBIT TAKER SPREAD</th>
+          <th>DERIBIT MAKER SPREAD</th>
+          <th>TAKER COST</th>
+          <th>TAKER PROFIT (APY)</th>
+          <th>MAKER COST</th>
+          <th>MAKER PROFIT (APY)</th>
+          <th>PIN RISK P(PIN)</th>
+          <th>STATUS</th>
+        `;
+      } else {
+        const costLabel = currentMode === 'taker' ? 'TAKER COST' : 'MAKER COST (MID)';
+        const profLabel = currentMode === 'taker' ? 'TAKER PROFIT' : 'MAKER PROFIT';
+        const apyLabel = currentMode === 'taker' ? 'TAKER APY' : 'MAKER APY';
+        tr.innerHTML = `
+          <th>MARKET / EXPIRY</th>
+          <th>STRIKE SPREAD</th>
+          <th>STRATEGY</th>
+          <th>POLY TOKEN QUOTE</th>
+          <th>DERIBIT SPREAD</th>
+          <th>${costLabel}</th>
+          <th>${profLabel}</th>
+          <th>${apyLabel}</th>
+          <th>PIN PROB P(PIN)</th>
+          <th>EXP. VALUE (EV)</th>
+          <th>STATUS</th>
+        `;
+      }
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('tableBody');
+      const search = (document.getElementById('searchInput').value || '').toLowerCase();
+      
+      const filtered = allTrades.filter(t => {
+        // Search filter
+        if (search) {
+          const hay = (t.name + ' ' + t.strike_str + ' ' + t.strategy).toLowerCase();
+          if (!hay.includes(search)) return false;
+        }
+
+        // Mode-specific status determination
+        const status = currentMode === 'maker' ? t.maker_status : t.taker_status;
+
+        if (currentFilter === 'pure' && !status.includes('PURE')) return false;
+        if (currentFilter === 'stat' && !status.includes('STAT')) return false;
+        if (currentFilter === 'bull' && t.direction !== 'BULL') return false;
+        if (currentFilter === 'bear' && t.direction !== 'BEAR') return false;
+
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = '';
+        document.getElementById('emptyNotice').style.display = 'block';
+        return;
+      }
+      document.getElementById('emptyNotice').style.display = 'none';
+
+      let html = '';
+      filtered.forEach(t => {
+        const status = currentMode === 'maker' ? t.maker_status : t.taker_status;
+        const profit = currentMode === 'maker' ? t.maker_profit : t.taker_profit;
+        const apy = currentMode === 'maker' ? t.maker_apy : t.taker_apy;
+        const cost = currentMode === 'maker' ? t.maker_cost : t.taker_cost;
+
+        let rowClass = '';
+        let badgeClass = 'badge-no-arb';
+        let badgeText = status;
+
+        if (status.includes('PURE')) {
+          rowClass = 'row-pure-arb';
+          badgeClass = 'badge-pure-arb';
+        } else if (status.includes('STAT')) {
+          rowClass = 'row-stat-edge';
+          badgeClass = 'badge-stat-edge';
+        } else if (status.includes('PIN')) {
+          rowClass = 'row-pin-risk';
+          badgeClass = 'badge-pin-risk';
+        }
+
+        const stratTag = t.direction === 'BULL' 
+          ? `<span class="tag-strat tag-bull">BULL CALL</span>` 
+          : `<span class="tag-strat tag-bear">BEAR PUT</span>`;
+
+        if (currentMode === 'dual') {
+          html += `
+            <tr class="${rowClass}">
+              <td><strong>${t.date_str}</strong></td>
+              <td>${t.strike_str}</td>
+              <td>${stratTag}</td>
+              <td>Taker: $${t.poly_ask.toFixed(3)} | Mid: $${t.poly_mid.toFixed(3)}</td>
+              <td>$${t.deribit_taker.toFixed(4)}</td>
+              <td>$${t.deribit_maker.toFixed(4)}</td>
+              <td class="cost-val">$${t.taker_cost.toFixed(4)}</td>
+              <td class="${t.taker_profit > 0 ? 'profit-pos' : 'profit-neg'}">
+                ${t.taker_profit > 0 ? `+$${t.taker_profit.toFixed(4)} (${t.taker_apy.toFixed(0)}%)` : `$${t.taker_profit.toFixed(4)}`}
+              </td>
+              <td class="cost-val" style="color:var(--bb-cyan);">$${t.maker_cost.toFixed(4)}</td>
+              <td class="${t.maker_profit > 0 ? 'profit-pos' : 'profit-neg'}">
+                ${t.maker_profit > 0 ? `+$${t.maker_profit.toFixed(4)} (${t.maker_apy.toFixed(0)}%)` : `$${t.maker_profit.toFixed(4)}`}
+              </td>
+              <td>${(t.pin_prob * 100).toFixed(1)}%</td>
+              <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+            </tr>
+          `;
+        } else {
+          html += `
+            <tr class="${rowClass}">
+              <td><strong>${t.date_str}</strong></td>
+              <td>${t.strike_str}</td>
+              <td>${stratTag}</td>
+              <td>
+                ${currentMode === 'maker' ? `Mid: $${t.poly_mid.toFixed(3)}` : `Ask: $${t.poly_ask.toFixed(3)}`} 
+                <span style="color:var(--text-dim); font-size:10px;">(Bid: $${t.poly_bid.toFixed(3)})</span>
+              </td>
+              <td>
+                $${(currentMode === 'maker' ? t.deribit_maker : t.deribit_taker).toFixed(4)}
+                <span style="color:var(--text-dim); font-size:10px;">($2k wide)</span>
+              </td>
+              <td class="cost-val">$${cost.toFixed(4)}</td>
+              <td class="${profit > 0 ? 'profit-pos' : 'profit-neg'}">
+                ${profit > 0 ? `+$${profit.toFixed(4)}` : `$${profit.toFixed(4)}`}
+              </td>
+              <td>
+                ${profit > 0 ? `<span class="apy-badge">+${apy.toFixed(0)}% APY</span>` : `<span style="color:var(--text-dim);">--</span>`}
+              </td>
+              <td>${(t.pin_prob * 100).toFixed(1)}%</td>
+              <td style="color:${t.ev > 0 ? 'var(--bb-green)' : 'var(--text-dim)'}; font-weight:600;">
+                ${t.ev > 0 ? `+$${t.ev.toFixed(3)}` : `$${t.ev.toFixed(3)}`}
+              </td>
+              <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+            </tr>
+          `;
+        }
+      });
+      tbody.innerHTML = html;
+    }
+
+    // Connect to WebSocket
+    function connectWS() {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${proto}//${window.location.host}/ws`;
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        document.getElementById('wsDot').className = 'dot';
+        document.getElementById('wsStatusText').innerText = 'LIVE WS';
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (!data) return;
+
+          // Spot price
+          if (data.btc_usd) {
+            const el = document.getElementById('cardBtcPrice');
+            const diff = data.btc_usd - lastBtc;
+            el.innerText = `$${data.btc_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            if (lastBtc !== 0 && diff !== 0) {
+              el.classList.remove('flash-green', 'flash-red');
+              void el.offsetWidth; // re-flow
+              el.classList.add(diff > 0 ? 'flash-green' : 'flash-red');
+            }
+            lastBtc = data.btc_usd;
+          }
+
+          // Active trades update
+          allTrades = data.active_trades || [];
+          hiddenCount = data.hidden_count || 0;
+
+          // KPI Cards
+          if (data.best_pure_taker) {
+            document.getElementById('cardBestPureArb').innerHTML = `<span style="color:var(--bb-green);">+${data.best_pure_taker.apy.toFixed(0)}% APY</span>`;
+            document.getElementById('cardBestPureSub').innerText = `${data.best_pure_taker.name} (${data.best_pure_taker.strike})`;
+          } else {
+            document.getElementById('cardBestPureArb').innerText = 'NO PURE ARB';
+            document.getElementById('cardBestPureSub').innerText = 'Awaiting spread compression';
+          }
+
+          if (data.best_maker) {
+            document.getElementById('cardBestMaker').innerHTML = `<span style="color:var(--bb-amber);">+${data.best_maker.apy.toFixed(0)}% APY</span>`;
+            document.getElementById('cardBestMakerSub').innerText = `${data.best_maker.name} (${data.best_maker.strike})`;
+          } else {
+            document.getElementById('cardBestMaker').innerText = '--';
+            document.getElementById('cardBestMakerSub').innerText = 'Calculating mid-market quotes';
+          }
+
+          document.getElementById('cardActiveWindows').innerText = allTrades.length;
+          document.getElementById('cardActiveSub').innerText = `Active with full quotes (${hiddenCount} waiting for fill)`;
+          document.getElementById('footerHiddenCount').innerText = `Hidden unquoted contracts: ${hiddenCount} (monitoring background WebSocket ticks)`;
+          document.getElementById('dataStatsLabel').innerText = `Showing ${allTrades.length} executable spread pairs`;
+
+          renderTable();
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      ws.onclose = () => {
+        document.getElementById('wsDot').className = 'dot connecting';
+        document.getElementById('wsStatusText').innerText = 'RECONNECTING...';
+        setTimeout(connectWS, 2000);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    }
+
+    // Init
+    buildTableHeader();
+    connectWS();
+  </script>
+</body>
+</html>
