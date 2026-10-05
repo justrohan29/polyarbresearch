@@ -1,3 +1,23 @@
+import socket
+
+# -------------------------------------------------------------
+# DNS Bypass for ISP Sinkholing (Jio / Indian ISP blocking fix)
+# Directly resolves Polymarket hostnames to official Cloudflare Anycast IPs
+# -------------------------------------------------------------
+POLYMARKET_IPS = {
+    "gamma-api.polymarket.com": "172.64.153.51",
+    "clob.polymarket.com": "172.64.153.51",
+    "ws-subscriptions-clob.polymarket.com": "172.64.153.51",
+}
+_orig_getaddrinfo = socket.getaddrinfo
+
+def _custom_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    if host in POLYMARKET_IPS:
+        host = POLYMARKET_IPS[host]
+    return _orig_getaddrinfo(host, port, family, type, proto, flags)
+
+socket.getaddrinfo = _custom_getaddrinfo
+
 import asyncio
 import websockets
 import requests
@@ -27,9 +47,37 @@ RESET = '\033[0m'
 STRIKES = [74, 76, 78, 80, 82, 84, 86, 88, 90, 92, 94]
 SPREAD_WIDTH = 2000.0  # Widen spread to $2,000 for halved fee overhead
 
-# Next 6 days
-today = datetime.now(timezone.utc)
-DATES = [(today + timedelta(days=i)) for i in range(6)]
+# Next active days matching open Polymarket events and available Deribit expiries
+now_utc = datetime.now(timezone.utc)
+# Daily Polymarket event resolves at 16:00 UTC; if current UTC hour is >= 16, start from tomorrow
+start_offset = 1 if now_utc.hour >= 16 else 0
+
+# Query Deribit active expiries so we only track dates with real option contracts
+deribit_expiries = set()
+try:
+    _r = requests.get("https://www.deribit.com/api/v2/public/get_instruments?currency=BTC&kind=option&expired=false", timeout=5)
+    if _r.ok:
+        for _inst in _r.json().get("result", []):
+            _parts = _inst["instrument_name"].split("-")
+            if len(_parts) >= 2:
+                deribit_expiries.add(_parts[1])
+except Exception:
+    pass
+
+DATES = []
+for i in range(10):
+    dt = now_utc + timedelta(days=i + start_offset)
+    next_day = dt + timedelta(days=1)
+    d_part = next_day.day
+    b_part = next_day.strftime('%b%y').upper()
+    eng = f"{d_part}{b_part}"
+    if not deribit_expiries or eng in deribit_expiries:
+        DATES.append(dt)
+    if len(DATES) >= 5:
+        break
+
+if not DATES:
+    DATES = [(now_utc + timedelta(days=i + start_offset)) for i in range(3)]
 
 def get_engulfing_date_str(dt: datetime) -> str:
     # Deribit daily options expire 08:00 UTC the day AFTER Polymarket event
@@ -306,7 +354,7 @@ def get_computed_trades():
 # -------------------------------------------------------------
 def bootstrap_polymarket_metadata():
     """Fetches event metadata once to extract exact clobTokenIds and initial book quotes."""
-    print(f"{CYAN}[POLYMARKET]{RESET} Discovering active CLOB token IDs for even strikes 74k-94k...")
+    print(f"{CYAN}[POLYMARKET]{RESET} Discovering active CLOB token IDs for even strikes 74k-94k across {len(DATES)} expiries...")
     for dt in DATES:
         month_str = dt.strftime('%B').lower()
         event_slug = f"bitcoin-above-on-{month_str}-{dt.day}-{dt.year}"
@@ -314,11 +362,14 @@ def bootstrap_polymarket_metadata():
         try:
             resp = requests.get(url, timeout=5)
             if not resp.ok:
+                print(f"{YELLOW}[POLYMARKET WARN]{RESET} {event_slug} -> HTTP {resp.status_code}")
                 continue
             data = resp.json()
             if not data or not isinstance(data, list):
+                print(f"{YELLOW}[POLYMARKET WARN]{RESET} {event_slug} -> No event data found")
                 continue
             event_markets = data[0].get("markets", [])
+            matched_count = 0
             for em in event_markets:
                 slug = em.get("slug", "")
                 raw_tokens = em.get("clobTokenIds", [])
@@ -356,10 +407,21 @@ def bootstrap_polymarket_metadata():
                         token_ids_to_subscribe.append(raw_tokens[1])
                         state["token_to_market"][raw_tokens[0]] = (m, "YES")
                         state["token_to_market"][raw_tokens[1]] = (m, "NO")
+                        matched_count += 1
+            print(f"{GREEN}[POLYMARKET]{RESET} {dt.strftime('%b %d')} ({event_slug}): Seeded {matched_count} strike markets")
         except Exception as e:
-            pass
+            print(f"{RED}[POLYMARKET ERROR]{RESET} Error loading {event_slug}: {e}")
 
-    print(f"{CYAN}[POLYMARKET]{RESET} Seeded {len(token_ids_to_subscribe)} CLOB token subscriptions.")
+    print(f"{GREEN}[POLYMARKET]{RESET} Successfully seeded {len(token_ids_to_subscribe)} CLOB token subscriptions.")
+
+    # Bootstrap BTC Spot price immediately
+    try:
+        btc_r = requests.get("https://www.deribit.com/api/v2/public/ticker?instrument_name=BTC-PERPETUAL", timeout=5)
+        if btc_r.ok:
+            state["btc_usd"] = float(btc_r.json()["result"]["last_price"])
+            print(f"{GREEN}[DERIBIT]{RESET} Bootstrapped initial BTC Spot: ${state['btc_usd']:,.2f}")
+    except Exception as e:
+        print(f"{YELLOW}[DERIBIT WARN]{RESET} Could not bootstrap BTC spot: {e}")
 
 async def stream_polymarket_clob():
     """Connects to Polymarket CLOB WebSocket and processes real-time L2 order books."""
