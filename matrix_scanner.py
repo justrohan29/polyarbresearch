@@ -533,15 +533,41 @@ async def get_dashboard():
     with open(html_path, "r", encoding="utf-8") as f:
         return f.read()
 
+@app.get("/api/state")
+async def get_api_state():
+    """Fallback REST endpoint for real-time arbitrage data."""
+    active_trades, hidden_count = get_computed_trades()
+    pure_arbs = [t for t in active_trades if "PURE" in t["taker_status"]]
+    best_pure = max(pure_arbs, key=lambda x: x["taker_apy"]) if pure_arbs else None
+    makers = [t for t in active_trades if t["maker_profit"] > 0]
+    best_maker = max(makers, key=lambda x: x["maker_apy"]) if makers else None
+    return {
+        "btc_usd": state["btc_usd"],
+        "active_trades": active_trades,
+        "hidden_count": hidden_count,
+        "best_pure_taker": {
+            "name": best_pure["name"],
+            "strike": best_pure["strike_str"],
+            "apy": best_pure["taker_apy"]
+        } if best_pure else None,
+        "best_maker": {
+            "name": best_maker["name"],
+            "strike": best_maker["strike_str"],
+            "apy": best_maker["maker_apy"]
+        } if best_maker else None
+    }
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     active_ws_connections.append(ws)
     try:
         while True:
-            # Keep socket alive
-            await ws.receive_text()
+            # Keep socket alive without blocking read
+            await asyncio.sleep(60)
     except (WebSocketDisconnect, Exception):
+        pass
+    finally:
         if ws in active_ws_connections:
             active_ws_connections.remove(ws)
 
@@ -589,7 +615,8 @@ async def broadcast_dashboard_state():
                 active_ws_connections.remove(d)
 
 async def run_server():
-    config = uvicorn.Config(app, host="127.0.0.1", port=8000, log_level="warning")
+    # ws_ping_interval=None prevents Python 3.14 asyncio assertion error in websockets
+    config = uvicorn.Config(app, host="127.0.0.1", port=8000, log_level="warning", ws_ping_interval=None, ws_ping_timeout=None)
     server = uvicorn.Server(config)
     await server.serve()
 

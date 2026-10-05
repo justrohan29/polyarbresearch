@@ -682,6 +682,61 @@
       tbody.innerHTML = html;
     }
 
+    function handlePayload(data) {
+      if (!data) return;
+
+      // Spot price
+      if (data.btc_usd) {
+        const el = document.getElementById('cardBtcPrice');
+        const diff = data.btc_usd - lastBtc;
+        el.innerText = `$${data.btc_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        if (lastBtc !== 0 && diff !== 0) {
+          el.classList.remove('flash-green', 'flash-red');
+          void el.offsetWidth; // re-flow
+          el.classList.add(diff > 0 ? 'flash-green' : 'flash-red');
+        }
+        lastBtc = data.btc_usd;
+      }
+
+      // Active trades update
+      allTrades = data.active_trades || [];
+      hiddenCount = data.hidden_count || 0;
+
+      // KPI Cards
+      if (data.best_pure_taker) {
+        document.getElementById('cardBestPureArb').innerHTML = `<span style="color:var(--bb-green);">+${data.best_pure_taker.apy.toFixed(0)}% APY</span>`;
+        document.getElementById('cardBestPureSub').innerText = `${data.best_pure_taker.name} (${data.best_pure_taker.strike})`;
+      } else {
+        document.getElementById('cardBestPureArb').innerText = 'NO PURE ARB';
+        document.getElementById('cardBestPureSub').innerText = 'Awaiting spread compression';
+      }
+
+      if (data.best_maker) {
+        document.getElementById('cardBestMaker').innerHTML = `<span style="color:var(--bb-amber);">+${data.best_maker.apy.toFixed(0)}% APY</span>`;
+        document.getElementById('cardBestMakerSub').innerText = `${data.best_maker.name} (${data.best_maker.strike})`;
+      } else {
+        document.getElementById('cardBestMaker').innerText = '--';
+        document.getElementById('cardBestMakerSub').innerText = 'Calculating mid-market quotes';
+      }
+
+      document.getElementById('cardActiveWindows').innerText = allTrades.length;
+      document.getElementById('cardActiveSub').innerText = `Active with full quotes (${hiddenCount} waiting for fill)`;
+      document.getElementById('footerHiddenCount').innerText = `Hidden unquoted contracts: ${hiddenCount} (monitoring background WebSocket ticks)`;
+      document.getElementById('dataStatsLabel').innerText = `Showing ${allTrades.length} executable spread pairs`;
+
+      renderTable();
+    }
+
+    async function pollState() {
+      try {
+        const res = await fetch('/api/state');
+        if (res.ok) {
+          const data = await res.json();
+          handlePayload(data);
+        }
+      } catch (e) {}
+    }
+
     // Connect to WebSocket
     function connectWS() {
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -696,57 +751,16 @@
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (!data) return;
-
-          // Spot price
-          if (data.btc_usd) {
-            const el = document.getElementById('cardBtcPrice');
-            const diff = data.btc_usd - lastBtc;
-            el.innerText = `$${data.btc_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            if (lastBtc !== 0 && diff !== 0) {
-              el.classList.remove('flash-green', 'flash-red');
-              void el.offsetWidth; // re-flow
-              el.classList.add(diff > 0 ? 'flash-green' : 'flash-red');
-            }
-            lastBtc = data.btc_usd;
-          }
-
-          // Active trades update
-          allTrades = data.active_trades || [];
-          hiddenCount = data.hidden_count || 0;
-
-          // KPI Cards
-          if (data.best_pure_taker) {
-            document.getElementById('cardBestPureArb').innerHTML = `<span style="color:var(--bb-green);">+${data.best_pure_taker.apy.toFixed(0)}% APY</span>`;
-            document.getElementById('cardBestPureSub').innerText = `${data.best_pure_taker.name} (${data.best_pure_taker.strike})`;
-          } else {
-            document.getElementById('cardBestPureArb').innerText = 'NO PURE ARB';
-            document.getElementById('cardBestPureSub').innerText = 'Awaiting spread compression';
-          }
-
-          if (data.best_maker) {
-            document.getElementById('cardBestMaker').innerHTML = `<span style="color:var(--bb-amber);">+${data.best_maker.apy.toFixed(0)}% APY</span>`;
-            document.getElementById('cardBestMakerSub').innerText = `${data.best_maker.name} (${data.best_maker.strike})`;
-          } else {
-            document.getElementById('cardBestMaker').innerText = '--';
-            document.getElementById('cardBestMakerSub').innerText = 'Calculating mid-market quotes';
-          }
-
-          document.getElementById('cardActiveWindows').innerText = allTrades.length;
-          document.getElementById('cardActiveSub').innerText = `Active with full quotes (${hiddenCount} waiting for fill)`;
-          document.getElementById('footerHiddenCount').innerText = `Hidden unquoted contracts: ${hiddenCount} (monitoring background WebSocket ticks)`;
-          document.getElementById('dataStatsLabel').innerText = `Showing ${allTrades.length} executable spread pairs`;
-
-          renderTable();
+          handlePayload(data);
         } catch (e) {
           console.error(e);
         }
       };
 
       ws.onclose = () => {
-        document.getElementById('wsDot').className = 'dot connecting';
-        document.getElementById('wsStatusText').innerText = 'RECONNECTING...';
-        setTimeout(connectWS, 2000);
+        document.getElementById('wsDot').className = 'dot';
+        document.getElementById('wsStatusText').innerText = 'LIVE REST';
+        setTimeout(connectWS, 3000);
       };
 
       ws.onerror = () => {
@@ -756,6 +770,8 @@
 
     // Init
     buildTableHeader();
+    pollState();
+    setInterval(pollState, 800);
     connectWS();
   </script>
 </body>
